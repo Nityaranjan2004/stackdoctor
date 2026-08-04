@@ -1,0 +1,15 @@
+{
+  "name": "stackdoctor",
+  "version": "1.0.0",
+  "description": "StackDoctor CLI Environment Inspector",
+  "type": "module",
+  "bin": {
+    "stackdoctor": "./src/index.js"
+  },
+  "scripts": {
+    "diagnose": "node src/index.js diagnose"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  }
+}

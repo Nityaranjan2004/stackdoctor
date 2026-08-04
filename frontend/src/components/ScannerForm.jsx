@@ -12,6 +12,18 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
     }
   }, [selectedProject]);
 
+  const handlePathChange = (newPath) => {
+    setPath(newPath);
+    // Auto infer project name if it looks like a Git URL
+    if (newPath.includes('github.com/')) {
+      const parts = newPath.replace(/\.git$/, '').split('/');
+      const repo = parts[parts.length - 1];
+      if (repo && (name === 'StackDoctor' || !name.trim())) {
+        setName(repo.charAt(0).toUpperCase() + repo.slice(1));
+      }
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim() || !path.trim()) return;
@@ -20,9 +32,15 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
 
   return (
     <div className="glass-card animate-slideup" style={{ marginBottom: '2rem' }}>
-      <h2 style={{ marginBottom: '1.2rem', fontSize: '1.4rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <span>🔍</span> Scan Repository
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+        <h2 style={{ fontSize: '1.4rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span>🔍</span> Scan Repository & Generate Setup Commands
+        </h2>
+        <span style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', background: 'rgba(59, 130, 246, 0.1)', padding: '0.2rem 0.6rem', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+          Git URL or Local Workspace Supported
+        </span>
+      </div>
+
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem', alignItems: 'center' }}>
           <div>
@@ -31,7 +49,7 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. My E-commerce"
+              placeholder="e.g. Express API"
               style={{
                 width: '100%',
                 background: 'rgba(255,255,255,0.05)',
@@ -46,12 +64,12 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
             />
           </div>
           <div>
-            <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>Git URL or Local Workspace Directory Path</label>
+            <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>Git URL or Local Workspace Path</label>
             <input
               type="text"
               value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="e.g. https://github.com/user/repo or f:/my-project"
+              onChange={(e) => handlePathChange(e.target.value)}
+              placeholder="e.g. https://github.com/expressjs/express or f:/my-project"
               style={{
                 width: '100%',
                 background: 'rgba(255,255,255,0.05)',
@@ -65,6 +83,32 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
               required
             />
           </div>
+        </div>
+
+        {/* Quick Presets */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8rem' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Quick Scan Examples:</span>
+          <button
+            type="button"
+            onClick={() => { setName('StackDoctor'); setPath('f:/DEVELOPEMENT/FINAL PROJECT/stackdoctor'); }}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#fff', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
+          >
+            Local Workspace
+          </button>
+          <button
+            type="button"
+            onClick={() => { setName('Express'); setPath('https://github.com/expressjs/express'); }}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#38bdf8', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
+          >
+            Express (Git)
+          </button>
+          <button
+            type="button"
+            onClick={() => { setName('Spring PetClinic'); setPath('https://github.com/spring-projects/spring-petclinic'); }}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#4ade80', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
+          >
+            Spring PetClinic (Git)
+          </button>
         </div>
         
         <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
@@ -99,34 +143,17 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
                   borderRadius: '50%',
                   animation: 'spin 0.8s linear infinite'
                 }} />
-                Scanning Workspace...
+                Scanning Workspace & Analysing Requirements...
               </>
             ) : (
               <>
-                <span>🚀</span> Start Deep Scan
+                <span>🚀</span> Scan Repo & Find Missing Tools
               </>
             )}
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setPath('f:/DEVELOPEMENT/FINAL PROJECT/stackdoctor')}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid var(--border-glass)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '0.85rem 1.2rem',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-              fontWeight: 500,
-              transition: 'all 0.2s'
-            }}
-          >
-            Reset Path
           </button>
         </div>
       </form>
     </div>
   );
 }
+

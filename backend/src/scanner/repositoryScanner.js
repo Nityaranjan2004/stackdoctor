@@ -33,6 +33,18 @@ const DEFAULT_IGNORE = [
 export async function scanRepository(dirPath, rootPath = dirPath, ignoreList = DEFAULT_IGNORE) {
   let results = [];
   try {
+    // If fast GitHub fetch created a virtual file-index.json, use it directly
+    const indexPath = path.join(dirPath, 'file-index.json');
+    try {
+      const indexContent = await fs.readFile(indexPath, 'utf-8');
+      const virtualFiles = JSON.parse(indexContent);
+      if (Array.isArray(virtualFiles) && virtualFiles.length > 0) {
+        return virtualFiles.filter(f => !ignoreList.includes(f.name));
+      }
+    } catch (e) {
+      // index file does not exist, fallback to fs.readdir
+    }
+
     const list = await fs.readdir(dirPath, { withFileTypes: true });
     for (const entry of list) {
       if (ignoreList.includes(entry.name)) {

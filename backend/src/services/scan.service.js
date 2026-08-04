@@ -7,6 +7,7 @@ import { detectNode } from '../detectors/nodeDetector.js';
 import { detectJava } from '../detectors/javaDetector.js';
 import { detectPython } from '../detectors/pythonDetector.js';
 import { detectDocker } from '../detectors/dockerDetector.js';
+import { detectLanguageByExtension } from '../detectors/extensionDetector.js';
 import { extractEnv } from '../extractors/envExtractor.js';
 import { extractServices } from '../extractors/serviceExtractor.js';
 import { extractPorts } from '../extractors/portExtractor.js';
@@ -54,8 +55,10 @@ export async function executeScan(projectId) {
       detectDocker(scanPath, files)
     ]);
 
+    const extensionStack = detectLanguageByExtension(files);
+
     // Merge stacks
-    const mergedStack = [...nodeStack, ...javaStack, ...pythonStack, ...dockerStack];
+    const mergedStack = [...nodeStack, ...javaStack, ...pythonStack, ...dockerStack, ...extensionStack];
     const uniqueStack = [];
     const seenStackNames = new Set();
     for (const item of mergedStack) {

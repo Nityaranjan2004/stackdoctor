@@ -4,14 +4,16 @@ import MockEnvSelector from './components/MockEnvSelector';
 import HealthScore from './components/HealthScore';
 import StackPanel from './components/StackPanel';
 import DiagnosticsPanel from './components/DiagnosticsPanel';
+import CloneSetupPanel from './components/CloneSetupPanel';
 import AiFixModal from './components/AiFixModal';
+import CliBanner from './components/CliBanner';
 
 export default function App() {
   const [projectsList, setProjectsList] = useState([]);
   const [project, setProject] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [activeDiagnostic, setActiveDiagnostic] = useState(null);
-  const [activeTab, setActiveTab] = useState('diagnostics'); // diagnostics, stacks, dependencies
+  const [activeTab, setActiveTab] = useState('clone-setup'); // clone-setup, diagnostics, stacks, dependencies
   
   // Simulated developer environment
   const [mockEnv, setMockEnv] = useState({
@@ -46,11 +48,23 @@ export default function App() {
     }
   };
 
+  const applyProjectDetails = (details) => {
+    setProject(details);
+    if (details.cliSnapshot) {
+      setMockEnv({
+        os: details.cliSnapshot.os || 'windows',
+        tools: details.cliSnapshot.tools || {},
+        dockerRunning: details.cliSnapshot.dockerRunning ?? false,
+        occupiedPorts: details.cliSnapshot.occupiedPorts || []
+      });
+    }
+  };
+
   const selectProject = async (id) => {
     try {
       const res = await fetch(`http://localhost:5000/api/scan/${id}`);
       const details = await res.json();
-      setProject(details);
+      applyProjectDetails(details);
     } catch (e) {
       console.error(e);
     }
@@ -88,7 +102,7 @@ export default function App() {
         
         if (details.status === 'completed' || details.status === 'failed' || attempts > 20) {
           clearInterval(interval);
-          setProject(details);
+          applyProjectDetails(details);
           setIsScanning(false);
           fetchProjects(); // refresh sidebar list
         }
@@ -186,24 +200,29 @@ export default function App() {
       }
     }
 
-    // 7. Check occupied Ports
+    // 7. Check occupied Ports ONLY if the project requires/exposes that port
+    const projectPorts = new Set(project.dependencies?.filter(d => d.type === 'docker').map(d => 5432) || []);
+    // Also add ports detected from project files or default 5000/3000 if node/express
+    if (stackNames.has('express') || stackNames.has('react')) projectPorts.add(5000);
+    if (stackNames.has('docker compose') || stackNames.has('postgresql')) projectPorts.add(5432);
+
     if (mockEnv.occupiedPorts && mockEnv.occupiedPorts.length > 0) {
       for (const port of mockEnv.occupiedPorts) {
-        computed.push({
-          title: `Port Conflict Detected (Port ${port})`,
-          description: `Local port ${port} is currently occupied by another process. This blocks the repository web server.`,
-          severity: 'warning',
-          file: null
-        });
+        // Only warn if the scanned project actually uses this port
+        if (projectPorts.has(port)) {
+          computed.push({
+            title: `Port Conflict Detected (Port ${port})`,
+            description: `Project port ${port} is currently occupied by another process on your computer.`,
+            severity: 'warning',
+            file: null
+          });
+        }
       }
     }
 
     // 8. Missing Environment Variables Checklist
-    // We mock check if environment variables like DATABASE_URL or JWT_SECRET are set
-    // (Usually set in .env. We simulate that we need it, and if it is in backend/.env, check if it's there)
-    const requiredEnvs = ['DATABASE_URL', 'JWT_SECRET'];
+    const requiredEnvs = ['DATABASE_URL'];
     requiredEnvs.forEach(envKey => {
-      // Check if backend/.env warning exists or database connection is offline
       const hasSecretsWarning = project.diagnostics?.some(d => d.title.includes('Secrets') || d.title.includes('Environment'));
       if (hasSecretsWarning && envKey === 'DATABASE_URL') {
         computed.push({
@@ -235,10 +254,10 @@ export default function App() {
       return true;
     });
 
-    // Score calculation
+    // Score calculation (Accurate weighting)
     let score = 100;
     uniqueDiagnostics.forEach(d => {
-      if (d.severity === 'error') score -= 20;
+      if (d.severity === 'error') score -= 15;
       else if (d.severity === 'warning') score -= 10;
     });
 
@@ -339,6 +358,9 @@ export default function App() {
 
           {project ? (
             <>
+              {/* CLI Terminal Command Banner */}
+              <CliBanner projectId={project.id} />
+
               {/* Dashboard Split Widgets */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '2rem' }}>
                 <HealthScore score={healthScore} />
@@ -347,7 +369,13 @@ export default function App() {
 
               {/* Detail Tabs */}
               <div className="glass-card">
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', marginBottom: '1.2rem' }}>
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--border-glass)', marginBottom: '1.2rem', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <button
+                    className={`report-tab-btn ${activeTab === 'clone-setup' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('clone-setup')}
+                  >
+                    🚀 Clone & Setup Guide
+                  </button>
                   <button
                     className={`report-tab-btn ${activeTab === 'diagnostics' ? 'active' : ''}`}
                     onClick={() => setActiveTab('diagnostics')}
@@ -367,6 +395,10 @@ export default function App() {
                     🔌 Dependencies ({project.dependencies?.length || 0})
                   </button>
                 </div>
+
+                {activeTab === 'clone-setup' && (
+                  <CloneSetupPanel project={project} mockEnv={mockEnv} />
+                )}
 
                 {activeTab === 'diagnostics' && (
                   <DiagnosticsPanel diagnostics={activeDiagnostics} onShowFix={setActiveDiagnostic} />
