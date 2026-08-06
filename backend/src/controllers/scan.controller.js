@@ -4,7 +4,7 @@ import util from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import prisma from '../db.js';
-import { executeScan } from '../services/scan.service.js';
+import { executeScan, getProjectEnvs } from '../services/scan.service.js';
 import { generateFix } from '../ai/fixGenerator.js';
 
 const execPromise = util.promisify(exec);
@@ -66,7 +66,8 @@ export async function getProjectDetails(req, res, next) {
     }
 
     const snapshot = getLatestCliSnapshot(id);
-    res.json({ ...project, cliSnapshot: snapshot });
+    const envs = getProjectEnvs(id);
+    res.json({ ...project, envs, cliSnapshot: snapshot });
   } catch (err) {
     next(err);
   }
@@ -134,16 +135,12 @@ export async function openTerminalController(req, res, next) {
     const safeCmd = command.trim();
     let folderPath = targetFolder ? path.resolve(targetFolder.trim()) : process.cwd();
 
-    // Ensure folder exists on system
-    try {
-      await fs.mkdir(folderPath, { recursive: true });
-    } catch (e) {
-      // folder creation ignored if exists
-    }
-
     const winPath = folderPath.replace(/\//g, '\\');
 
     if (process.platform === 'win32') {
+      // Convert && to PowerShell sequential chaining (;) so cd changes working directory in current shell
+      const psCommand = safeCmd.split('&&').map(cmd => cmd.trim()).join(' ; ');
+
       const psScript = `
 $Host.UI.RawUI.WindowTitle = 'StackDoctor Terminal Launcher';
 Clear-Host;
@@ -162,8 +159,9 @@ Write-Host '👉 Press [ENTER] in this terminal to execute the command now.' -Fo
 Write-Host '============================================================' -ForegroundColor DarkGray;
 Write-Host '';
 $null = Read-Host;
-Write-Host 'Executing command...' -ForegroundColor Cyan;
-${safeCmd}
+Write-Host 'Executing command: ${safeCmd.replace(/'/g, "''")}' -ForegroundColor Cyan;
+Write-Host '';
+${psCommand}
 `;
 
       const encodedScript = Buffer.from(psScript, 'utf16le').toString('base64');

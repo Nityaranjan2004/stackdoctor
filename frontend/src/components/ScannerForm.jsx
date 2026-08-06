@@ -13,10 +13,18 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
   }, [selectedProject]);
 
   const handlePathChange = (newPath) => {
-    setPath(newPath);
+    let cleanedPath = newPath.trim();
+    // If multiple URLs were accidentally pasted together (e.g. url1https://url2), extract the last URL
+    if ((cleanedPath.match(/https?:\/\//g) || []).length > 1) {
+      const lastHttpIndex = Math.max(cleanedPath.lastIndexOf('https://'), cleanedPath.lastIndexOf('http://'));
+      if (lastHttpIndex > 0) {
+        cleanedPath = cleanedPath.substring(lastHttpIndex);
+      }
+    }
+    setPath(cleanedPath);
     // Auto infer project name if it looks like a Git URL
-    if (newPath.includes('github.com/')) {
-      const parts = newPath.replace(/\.git$/, '').split('/');
+    if (cleanedPath.includes('github.com/')) {
+      const parts = cleanedPath.replace(/\.git$/, '').split('/');
       const repo = parts[parts.length - 1];
       if (repo && (name === 'StackDoctor' || !name.trim())) {
         setName(repo.charAt(0).toUpperCase() + repo.slice(1));
@@ -94,6 +102,13 @@ export default function ScannerForm({ onScanStart, isScanning, selectedProject }
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#fff', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
           >
             Local Workspace
+          </button>
+          <button
+            type="button"
+            onClick={() => { setName('Chat Backend'); setPath('https://github.com/ppl8763/chat-backend'); }}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#a855f7', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
+          >
+            Chat Backend (FastAPI)
           </button>
           <button
             type="button"

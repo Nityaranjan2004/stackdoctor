@@ -1,16 +1,17 @@
 services:
   db:
-    image: postgres:15-alpine
+    image: mongo:latest
     container_name: stackdoctor-db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: stackdoctor
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: stackdoctor
     ports:
-      - "5433:5432"
+      - "27017:27017"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
 
 volumes:
-  pgdata:
+  mongodata:
+

@@ -13,6 +13,16 @@ import { extractServices } from '../extractors/serviceExtractor.js';
 import { extractPorts } from '../extractors/portExtractor.js';
 import { runDiagnostics } from '../diagnostics/diagnosticEngine.js';
 
+const envCache = new Map();
+
+export function storeProjectEnvs(projectId, envs) {
+  envCache.set(projectId, envs);
+}
+
+export function getProjectEnvs(projectId) {
+  return envCache.get(projectId) || [];
+}
+
 /**
  * Executes a full workspace/repository scan.
  * @param {string} projectId 
@@ -77,7 +87,7 @@ export async function executeScan(projectId) {
     ]);
 
     // 6. Run diagnostics
-    const diagnostics = runDiagnostics(uniqueStack, services, files, envs, ports);
+    const { diagnostics, health } = runDiagnostics(uniqueStack, services, files, envs, ports);
 
     // 7. Store results using Prisma Client in a transaction
     await prisma.$transaction(async (tx) => {
@@ -139,6 +149,9 @@ export async function executeScan(projectId) {
         data: { status: 'completed' }
       });
     });
+
+    // Store envs in memory or attach to cache for active project details
+    storeProjectEnvs(projectId, envs);
 
   } catch (err) {
     console.error(`Scan execution error for project ${projectId}:`, err);

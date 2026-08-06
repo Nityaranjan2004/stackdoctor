@@ -9,15 +9,21 @@ import path from 'path';
  */
 export async function detectPython(projectPath, files) {
   const stack = [];
-  const filePaths = new Set(files.map(f => f.path));
-
-  const isPython = filePaths.has('requirements.txt') || filePaths.has('Pipfile') || filePaths.has('pyproject.toml') || files.some(f => f.path.endsWith('.py'));
+  const reqFile = files.find(f => f.path === 'requirements.txt') || files.find(f => f.name === 'requirements.txt' && !f.isDirectory);
+  const isPython = reqFile || files.some(f => f.name === 'Pipfile' || f.name === 'pyproject.toml') || files.some(f => f.path.endsWith('.py'));
+  
   if (isPython) {
-    stack.push({ name: 'Python', category: 'Language', confidence: 1.0, version: null });
+    const relativeSubDir = reqFile && path.dirname(reqFile.path) !== '.' ? path.dirname(reqFile.path).replace(/\\/g, '/') : null;
+    stack.push({ 
+      name: 'Python', 
+      category: 'Language', 
+      confidence: 1.0, 
+      version: relativeSubDir ? `subfolder:${relativeSubDir}` : null 
+    });
 
-    if (filePaths.has('requirements.txt')) {
+    if (reqFile) {
       try {
-        const reqsContent = await fs.readFile(path.join(projectPath, 'requirements.txt'), 'utf-8');
+        const reqsContent = await fs.readFile(path.join(projectPath, reqFile.path), 'utf-8');
         
         if (/django/i.test(reqsContent)) {
           stack.push({ name: 'Django', category: 'Backend Framework', confidence: 1.0, version: null });
@@ -28,6 +34,9 @@ export async function detectPython(projectPath, files) {
         if (/fastapi/i.test(reqsContent)) {
           stack.push({ name: 'FastAPI', category: 'Backend Framework', confidence: 1.0, version: null });
         }
+        if (/streamlit/i.test(reqsContent)) {
+          stack.push({ name: 'Streamlit', category: 'Frontend Framework', confidence: 1.0, version: null });
+        }
         if (/sqlalchemy/i.test(reqsContent)) {
           stack.push({ name: 'SQLAlchemy', category: 'ORM', confidence: 1.0, version: null });
         }
@@ -37,6 +46,18 @@ export async function detectPython(projectPath, files) {
       } catch (e) {
         console.warn('Failed to parse requirements.txt for Python detection:', e);
       }
+    }
+
+    // Detect Python entry file from scanned file list
+    const pyFiles = files.filter(f => !f.isDirectory && f.name.endsWith('.py'));
+    const entryFile = pyFiles.find(f => /main|app|dashboard|server|manage/i.test(f.name)) || pyFiles[0];
+    if (entryFile) {
+      stack.push({
+        name: 'Python Entry Point',
+        category: 'Entry File',
+        confidence: 1.0,
+        version: entryFile.path.replace(/\\/g, '/')
+      });
     }
   }
 

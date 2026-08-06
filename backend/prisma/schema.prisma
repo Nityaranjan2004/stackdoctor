@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -8,7 +8,7 @@ generator client {
 }
 
 model Project {
-  id           String       @id @default(uuid())
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
   name         String
   path         String
   gitUrl       String?
@@ -21,12 +21,12 @@ model Project {
 }
 
 model Stack {
-  id         String   @id @default(uuid())
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
   name       String
   version    String?
   category   String // Frontend, Backend, Database, CLI, Build, Language, etc.
   confidence Float    @default(1.0)
-  projectId  String
+  projectId  String   @db.ObjectId
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -35,11 +35,11 @@ model Stack {
 }
 
 model Dependency {
-  id        String   @id @default(uuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   name      String
   version   String
   type      String // npm, pip, maven, cargo, docker, etc.
-  projectId String
+  projectId String   @db.ObjectId
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -48,15 +48,16 @@ model Dependency {
 }
 
 model Diagnostic {
-  id          String   @id @default(uuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String
   severity    String // info, warning, error
   file        String?
   line        Int?
   ruleId      String?
-  projectId   String
+  projectId   String   @db.ObjectId
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+

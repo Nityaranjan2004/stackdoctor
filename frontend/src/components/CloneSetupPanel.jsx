@@ -88,87 +88,103 @@ export default function CloneSetupPanel({ project, mockEnv }) {
   const stackNames = new Set(stacks.map(s => s.name.toLowerCase()));
   const deps = project.dependencies || [];
 
-  // Check missing tools / versions
+  // Check missing tools required specifically by this project
   const missingChecks = [];
 
-  // Git check
-  const gitVer = mockEnv?.tools?.git || '0.0.0';
-  const gitOk = parseInt(gitVer.split('.')[0] || '0', 10) >= 2;
-  missingChecks.push({
-    name: 'Git Version Control',
-    required: '>= 2.30',
-    installed: mockEnv?.tools?.git ? `v${mockEnv.tools.git}` : 'Not installed',
-    isMissing: !mockEnv?.tools?.git,
-    category: 'System Tool',
-    fixCmd: 'https://git-scm.com/downloads'
-  });
+  // Git check (only if Git is missing and project is a Git repository)
+  const gitVer = mockEnv?.tools?.git || null;
+  if (isGitUrl && !gitVer) {
+    missingChecks.push({
+      name: 'Git Version Control',
+      required: '>= 2.30',
+      installed: 'Not installed',
+      isMissing: true,
+      category: 'System Tool',
+      fixCmd: 'https://git-scm.com/downloads'
+    });
+  }
 
-  // Node check
+  // Node check (only if project requires JS/TS/Node)
   if (stackNames.has('javascript') || stackNames.has('typescript') || stackNames.has('node') || stackNames.has('react') || stackNames.has('next.js')) {
     const nodeVer = mockEnv?.tools?.node || null;
     const nodeMajor = nodeVer ? parseInt(nodeVer.split('.')[0], 10) : 0;
-    const isNodeOk = nodeMajor >= 22;
-    missingChecks.push({
-      name: 'Node.js Runtime',
-      required: 'v22.x',
-      installed: nodeVer ? `v${nodeVer}` : 'Not installed',
-      isMissing: !nodeVer || !isNodeOk,
-      category: 'Runtime',
-      fixCmd: 'nvm install 22 && nvm use 22'
-    });
+    if (!nodeVer || nodeMajor < 18) {
+      missingChecks.push({
+        name: 'Node.js Runtime',
+        required: '>= v18.x',
+        installed: nodeVer ? `v${nodeVer}` : 'Not installed',
+        isMissing: true,
+        category: 'Runtime',
+        fixCmd: 'nvm install 22 && nvm use 22'
+      });
+    }
   }
 
-  // Python check
+  // Python check (only if project requires Python/Django/FastAPI/Flask)
   if (stackNames.has('python') || stackNames.has('django') || stackNames.has('fastapi') || stackNames.has('flask')) {
     const pyVer = mockEnv?.tools?.python || null;
-    missingChecks.push({
-      name: 'Python Environment',
-      required: '>= 3.10',
-      installed: pyVer ? `v${pyVer}` : 'Not installed',
-      isMissing: !pyVer,
-      category: 'Runtime',
-      fixCmd: 'winget install Python.Python.3.12'
-    });
+    if (!pyVer) {
+      missingChecks.push({
+        name: 'Python Environment',
+        required: '>= 3.10',
+        installed: 'Not installed',
+        isMissing: true,
+        category: 'Runtime',
+        fixCmd: 'winget install Python.Python.3.12'
+      });
+    }
   }
 
-  // Java check
+  // Java check (only if project requires Java/Spring/Maven)
   if (stackNames.has('java') || stackNames.has('spring boot') || stackNames.has('maven')) {
     const javaVer = mockEnv?.tools?.java || null;
-    missingChecks.push({
-      name: 'Java JDK',
-      required: 'JDK 21',
-      installed: javaVer ? `v${javaVer}` : 'Not installed',
-      isMissing: !javaVer,
-      category: 'Runtime',
-      fixCmd: 'winget install EclipseAdoptium.Temurin.21.JDK'
-    });
+    if (!javaVer) {
+      missingChecks.push({
+        name: 'Java JDK',
+        required: 'JDK 21',
+        installed: 'Not installed',
+        isMissing: true,
+        category: 'Runtime',
+        fixCmd: 'winget install EclipseAdoptium.Temurin.21.JDK'
+      });
+    }
   }
 
-  // Docker check
+  // Docker check (only if project has docker files or dependencies)
   if (stackNames.has('docker') || deps.some(d => d.name.toLowerCase().includes('docker'))) {
     const isDockerRunning = mockEnv?.dockerRunning || false;
-    missingChecks.push({
-      name: 'Docker Daemon',
-      required: 'Running',
-      installed: isDockerRunning ? 'Running' : 'Stopped / Not Running',
-      isMissing: !isDockerRunning,
-      category: 'Container Engine',
-      fixCmd: 'docker desktop start'
-    });
+    if (!isDockerRunning) {
+      missingChecks.push({
+        name: 'Docker Daemon',
+        required: 'Running',
+        installed: 'Stopped / Not Running',
+        isMissing: true,
+        category: 'Container Engine',
+        fixCmd: 'docker desktop start'
+      });
+    }
   }
 
-  // Database checks
+  // Database check (only if project explicitly requires PostgreSQL)
   const hasPostgres = deps.some(d => d.name.toLowerCase().includes('postgres')) || stackNames.has('postgresql');
-  if (hasPostgres) {
+  if (hasPostgres && !mockEnv?.services?.postgres) {
     missingChecks.push({
       name: 'PostgreSQL Database Service',
       required: 'Port 5432 / Service',
-      installed: 'Check local port 5432',
+      installed: 'Service not active on 5432',
       isMissing: true,
       category: 'Database',
       fixCmd: 'docker run --name postgres-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres'
     });
   }
+
+  // Check if manifest lives in a subfolder (e.g. subfolder:backend)
+  let subDir = '';
+  stacks.forEach(s => {
+    if (s.version && typeof s.version === 'string' && s.version.startsWith('subfolder:')) {
+      subDir = s.version.replace('subfolder:', '');
+    }
+  });
 
   // Build step-by-step commands
   const steps = [];
@@ -181,7 +197,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
       command: `git clone ${pathOrUrl}`,
       description: 'Downloads all project source code, configurations, and assets into your system.'
     });
-  } else {
+  } else if (pathOrUrl && pathOrUrl.trim() !== '') {
     steps.push({
       num: 1,
       title: 'Navigate to project directory',
@@ -192,11 +208,21 @@ export default function CloneSetupPanel({ project, mockEnv }) {
 
   // Step 2: Change directory (if cloned)
   if (isGitUrl) {
+    const targetCd = subDir ? `${folderName}/${subDir}` : folderName;
     steps.push({
       num: 2,
-      title: 'Navigate into project folder',
-      command: `cd ${folderName}`,
-      description: 'Change directory to the cloned repository root.'
+      title: subDir ? `Navigate into project subfolder (${subDir})` : 'Navigate into project folder',
+      command: `cd ${targetCd}`,
+      description: subDir
+        ? `StackDoctor detected manifest file inside subfolder '${subDir}'.`
+        : 'Change directory to the cloned repository root.'
+    });
+  } else if (subDir) {
+    steps.push({
+      num: 2,
+      title: `Navigate into subfolder (${subDir})`,
+      command: `cd ${subDir}`,
+      description: `StackDoctor detected manifest file inside subfolder '${subDir}'.`
     });
   }
 
@@ -211,30 +237,123 @@ export default function CloneSetupPanel({ project, mockEnv }) {
     });
   }
 
-  // Step 4: Install Dependencies
-  let installCmd = 'npm install';
-  if (stackNames.has('python')) installCmd = 'pip install -r requirements.txt';
-  else if (stackNames.has('java') || stackNames.has('maven')) installCmd = './mvnw clean install';
-  
-  steps.push({
-    num: steps.length + 1,
-    title: 'Install project dependencies',
-    command: installCmd,
-    description: 'Installs all required package libraries specified in the manifest.'
-  });
+  // Rust check (only if project requires Rust)
+  if (stackNames.has('rust')) {
+    const rustVer = mockEnv?.tools?.rust || null;
+    if (!rustVer) {
+      missingChecks.push({
+        name: 'Rust Toolchain (cargo & rustc)',
+        required: '>= 1.70',
+        installed: 'Not installed',
+        isMissing: true,
+        category: 'Runtime',
+        fixCmd: 'winget install Rustlang.Rustup'
+      });
+    }
+  }
+
+  // Go check (only if project requires Go)
+  if (stackNames.has('go') || stackNames.has('golang')) {
+    const goVer = mockEnv?.tools?.go || null;
+    if (!goVer) {
+      missingChecks.push({
+        name: 'Go Programming Language',
+        required: '>= 1.20',
+        installed: 'Not installed',
+        isMissing: true,
+        category: 'Runtime',
+        fixCmd: 'winget install GoLang.Go'
+      });
+    }
+  }
+
+  // Check stack types dynamically from scanner output
+  const isRustProject = stackNames.has('rust');
+  const isGoProject = stackNames.has('go') || stackNames.has('golang');
+  const isPythonProject = stackNames.has('python') || stackNames.has('fastapi') || stackNames.has('django') || stackNames.has('flask') || stackNames.has('streamlit');
+  const isNodeProject = stackNames.has('javascript') || stackNames.has('typescript') || stackNames.has('node') || stackNames.has('react') || stackNames.has('express') || stackNames.has('next.js') || stackNames.has('vite');
+  const isJavaProject = stackNames.has('java') || stackNames.has('spring boot') || stackNames.has('maven');
+
+  // Step 4: Install Dependencies / Build
+  let installCmd = null;
+  let installDesc = '';
+
+  if (isRustProject) {
+    installCmd = 'cargo build';
+    installDesc = 'Fetches Rust dependencies and compiles crate binaries.';
+  } else if (isGoProject) {
+    installCmd = 'go mod download';
+    installDesc = 'Downloads Go module dependencies specified in go.mod.';
+  } else if (isPythonProject) {
+    installCmd = 'pip install -r requirements.txt';
+    installDesc = subDir ? `Installs Python packages from ${subDir}/requirements.txt.` : 'Installs all Python dependencies from requirements.txt.';
+  } else if (isJavaProject) {
+    installCmd = './mvnw clean install';
+    installDesc = 'Builds Java project dependencies using Maven wrapper.';
+  } else if (isNodeProject) {
+    installCmd = 'npm install';
+    installDesc = subDir ? `Installs package dependencies inside ${subDir}/ manifest.` : 'Installs all required package libraries specified in package.json.';
+  }
+
+  if (installCmd) {
+    steps.push({
+      num: steps.length + 1,
+      title: 'Install project dependencies & build',
+      command: installCmd,
+      description: installDesc
+    });
+  }
 
   // Step 5: Start / Run Project
-  let runCmd = 'npm run dev';
-  if (stackNames.has('python')) runCmd = 'python main.py';
-  else if (stackNames.has('java')) runCmd = './mvnw spring-boot:run';
-  else if (stackNames.has('docker')) runCmd = 'docker compose up';
+  let runCmd = null;
+  let runTitle = 'Launch application';
+  let runDesc = 'Starts the development server or containerized application.';
 
-  steps.push({
-    num: steps.length + 1,
-    title: 'Launch application',
-    command: runCmd,
-    description: 'Starts the development server or containerized application.'
-  });
+  if (isRustProject) {
+    runCmd = 'cargo run';
+    runTitle = 'Launch Rust Binary';
+    runDesc = 'Compiles and executes the Rust binary crate.';
+  } else if (isGoProject) {
+    runCmd = 'go run .';
+    runTitle = 'Launch Go Application';
+    runDesc = 'Compiles and runs main Go package.';
+  } else if (isPythonProject) {
+    if (stackNames.has('streamlit')) {
+      runCmd = `streamlit run ${entryPyFile || 'app.py'}`;
+      runTitle = 'Launch Streamlit Dashboard';
+      runDesc = 'Starts Streamlit web application server.';
+    } else if (stackNames.has('fastapi')) {
+      const modulePath = entryPyFile ? entryPyFile.replace(/\.py$/, '').replace(/\//g, '.') : 'app.main';
+      runCmd = `uvicorn ${modulePath}:app --reload`;
+      runTitle = 'Launch FastAPI Server';
+      runDesc = 'Starts Uvicorn ASGI server for FastAPI.';
+    } else if (stackNames.has('django')) {
+      runCmd = 'python manage.py runserver';
+      runTitle = 'Launch Django Server';
+      runDesc = 'Starts Django development web server.';
+    } else {
+      runCmd = `python ${entryPyFile || 'main.py'}`;
+      runTitle = 'Launch Python Application';
+      runDesc = `Executes Python entry point script (${entryPyFile || 'main.py'}).`;
+    }
+  } else if (isJavaProject) {
+    runCmd = './mvnw spring-boot:run';
+    runTitle = 'Launch Spring Boot Server';
+  } else if (isNodeProject) {
+    runCmd = 'npm run dev';
+    runTitle = 'Launch Node Server';
+  } else if (stackNames.has('docker')) {
+    runCmd = 'docker compose up';
+  }
+
+  if (runCmd) {
+    steps.push({
+      num: steps.length + 1,
+      title: runTitle,
+      command: runCmd,
+      description: runDesc
+    });
+  }
 
   // Construct full one-liner execution command
   const fullChainedCommand = steps.map(s => s.command).join(' && ');
@@ -247,7 +366,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
 
   return (
     <div className="glass-card animate-slideup" style={{ gridColumn: 'span 3', display: 'flex', flexDirection: 'column', gap: '1.4rem' }}>
-      
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
@@ -364,41 +483,59 @@ export default function CloneSetupPanel({ project, mockEnv }) {
       {/* Missing Tools & System Inspection Summary */}
       <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', padding: '1.1rem' }}>
         <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span>🔍</span> System Tools & Dependency Scan
+          <span>🔍</span> Missing System Runtimes & Tool Check
         </h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.8rem' }}>
-          {missingChecks.map((item, idx) => (
-            <div
-              key={idx}
-              style={{
-                background: item.isMissing ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
-                border: `1px solid ${item.isMissing ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
-                borderRadius: '6px',
-                padding: '0.75rem 0.9rem',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>{item.name}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-                  Req: {item.required} | PC: {item.installed}
+
+        {missingChecks.length === 0 ? (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: '6px',
+            padding: '0.85rem 1.1rem',
+            color: '#34d399',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem'
+          }}>
+            <span>✅ All required runtimes & tools for this project are installed on your computer!</span>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.8rem' }}>
+            {missingChecks.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: '6px',
+                  padding: '0.75rem 0.9rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>{item.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                    Required: {item.required} | Status: {item.installed}
+                  </div>
                 </div>
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '4px',
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  color: 'var(--color-danger)'
+                }}>
+                  MISSING
+                </span>
               </div>
-              <span style={{
-                fontSize: '0.7rem',
-                fontWeight: 700,
-                padding: '0.2rem 0.5rem',
-                borderRadius: '4px',
-                background: item.isMissing ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                color: item.isMissing ? 'var(--color-danger)' : 'var(--color-success)'
-              }}>
-                {item.isMissing ? 'MISSING / ISSUE' : 'INSTALLED'}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Step-by-Step Terminal Instructions */}
@@ -440,22 +577,41 @@ export default function CloneSetupPanel({ project, mockEnv }) {
                     {st.title}
                   </span>
                 </div>
-                <button
-                  onClick={() => handleCopy(st.command, `step-${st.num}`)}
-                  style={{
-                    background: copiedStep === `step-${st.num}` ? 'var(--color-success)' : 'rgba(255,255,255,0.08)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '4px',
-                    padding: '0.3rem 0.7rem',
-                    color: '#fff',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {copiedStep === `step-${st.num}` ? '✓ Copied' : 'Copy Step'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <button
+                    onClick={() => handleCopy(st.command, `step-${st.num}`)}
+                    style={{
+                      background: copiedStep === `step-${st.num}` ? 'var(--color-success)' : 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '4px',
+                      padding: '0.3rem 0.7rem',
+                      color: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {copiedStep === `step-${st.num}` ? '✓ Copied' : 'Copy Step'}
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenTerminal(st.command)}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      borderRadius: '4px',
+                      padding: '0.3rem 0.7rem',
+                      color: '#34d399',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    🖥️ Run Step
+                  </button>
+                </div>
               </div>
 
               <div style={{
@@ -470,7 +626,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
               }}>
                 $ {st.command}
               </div>
-              
+
               <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                 {st.description}
               </div>

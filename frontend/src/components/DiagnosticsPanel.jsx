@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function DiagnosticsPanel({ diagnostics, onShowFix }) {
+export default function DiagnosticsPanel({ diagnostics = [], onShowFix }) {
   const [filter, setFilter] = useState('all'); // all, errors, warnings, success
 
   const getSeverityStyles = (severity) => {
@@ -32,7 +32,10 @@ export default function DiagnosticsPanel({ diagnostics, onShowFix }) {
     }
   };
 
-  const filteredDiagnostics = diagnostics.filter(d => {
+  const safeList = Array.isArray(diagnostics) ? diagnostics : [];
+
+  const filteredDiagnostics = safeList.filter(d => {
+    if (!d) return false;
     if (filter === 'errors') return d.severity === 'error';
     if (filter === 'warnings') return d.severity === 'warning';
     return true;

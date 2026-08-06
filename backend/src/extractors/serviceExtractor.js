@@ -4,38 +4,53 @@ import { XMLParser } from 'fast-xml-parser';
 import YAML from 'yaml';
 
 /**
- * Extracts dependencies and package requirements.
- * @param {string} projectPath
- * @param {Array<{name: string, path: string}>} files
- * @returns {Promise<Array<{name: string, version: string, type: string}>>}
+ * Extracts dependencies and package requirements across multiple ecosystems.
+ * Reuses pre-loaded file content from scanner for maximum I/O performance.
+ * 
+ * @param {string} projectPath Absolute path to project
+ * @param {Array<{name: string, path: string, content?: string}>} files
+ * @returns {Promise<Array<{name: string, version: string, type: string, isDev?: boolean}>>}
  */
 export async function extractServices(projectPath, files) {
   const dependencies = [];
-  const filePaths = new Set(files.map(f => f.path));
+  const fileMap = new Map(files.map(f => [f.path.toLowerCase(), f]));
 
-  // 1. package.json
-  if (filePaths.has('package.json')) {
+  const getFileContent = async (relativePath) => {
+    const item = fileMap.get(relativePath.toLowerCase());
+    if (!item) return null;
+    if (item.content) return item.content;
     try {
-      const content = await fs.readFile(path.join(projectPath, 'package.json'), 'utf-8');
-      const pkg = JSON.parse(content);
-      const add = (deps, type) => {
-        if (!deps) return;
-        for (const [name, version] of Object.entries(deps)) {
-          dependencies.push({ name, version: String(version), type: 'npm' });
-        }
-      };
-      add(pkg.dependencies, 'npm');
-      add(pkg.devDependencies, 'npm');
+      return await fs.readFile(path.join(projectPath, item.path), 'utf-8');
     } catch (e) {
-      console.warn('Error extracting npm dependencies:', e);
+      return null;
+    }
+  };
+
+  // 1. package.json (Node.js)
+  const pkgContent = await getFileContent('package.json');
+  if (pkgContent) {
+    try {
+      const pkg = JSON.parse(pkgContent);
+      if (pkg.dependencies) {
+        for (const [name, version] of Object.entries(pkg.dependencies)) {
+          dependencies.push({ name, version: String(version), type: 'npm', isDev: false });
+        }
+      }
+      if (pkg.devDependencies) {
+        for (const [name, version] of Object.entries(pkg.devDependencies)) {
+          dependencies.push({ name, version: String(version), type: 'npm', isDev: true });
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing package.json:', e);
     }
   }
 
-  // 2. requirements.txt
-  if (filePaths.has('requirements.txt')) {
+  // 2. requirements.txt / pyproject.toml (Python)
+  const reqContent = await getFileContent('requirements.txt');
+  if (reqContent) {
     try {
-      const content = await fs.readFile(path.join(projectPath, 'requirements.txt'), 'utf-8');
-      const lines = content.split(/\r?\n/);
+      const lines = reqContent.split(/\r?\n/);
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('-r')) continue;
@@ -47,16 +62,61 @@ export async function extractServices(projectPath, files) {
         }
       }
     } catch (e) {
-      console.warn('Error extracting Python dependencies:', e);
+      console.warn('Error parsing requirements.txt:', e);
     }
   }
 
-  // 3. pom.xml
-  if (filePaths.has('pom.xml')) {
+  // 3. go.mod (Go)
+  const goModContent = await getFileContent('go.mod');
+  if (goModContent) {
     try {
-      const content = await fs.readFile(path.join(projectPath, 'pom.xml'), 'utf-8');
+      const lines = goModContent.split(/\r?\n/);
+      let inRequireBlock = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('require (')) {
+          inRequireBlock = true;
+          continue;
+        }
+        if (inRequireBlock && trimmed === ')') {
+          inRequireBlock = false;
+          continue;
+        }
+
+        if (inRequireBlock || trimmed.startsWith('require ')) {
+          const parts = trimmed.replace('require ', '').trim().split(/\s+/);
+          if (parts.length >= 2) {
+            dependencies.push({ name: parts[0], version: parts[1], type: 'go' });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing go.mod:', e);
+    }
+  }
+
+  // 4. Cargo.toml (Rust)
+  const cargoContent = await getFileContent('cargo.toml');
+  if (cargoContent) {
+    try {
+      const parsedCargo = YAML.parse(cargoContent); // TOML compatible basic parser
+      if (parsedCargo && parsedCargo.dependencies) {
+        for (const [name, val] of Object.entries(parsedCargo.dependencies)) {
+          const version = typeof val === 'string' ? val : (val.version || 'latest');
+          dependencies.push({ name, version: String(version), type: 'cargo' });
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing Cargo.toml:', e);
+    }
+  }
+
+  // 5. pom.xml (Java Maven)
+  const pomContent = await getFileContent('pom.xml');
+  if (pomContent) {
+    try {
       const parser = new XMLParser();
-      const jsonObj = parser.parse(content);
+      const jsonObj = parser.parse(pomContent);
       const project = jsonObj.project;
       if (project && project.dependencies && project.dependencies.dependency) {
         let deps = project.dependencies.dependency;
@@ -70,30 +130,32 @@ export async function extractServices(projectPath, files) {
         }
       }
     } catch (e) {
-      console.warn('Error extracting Maven dependencies:', e);
+      console.warn('Error parsing pom.xml:', e);
     }
   }
 
-  // 4. Docker Compose YAML
-  const composeFiles = files.filter(f => f.name === 'docker-compose.yml' || f.name === 'docker-compose.yaml');
+  // 6. Docker Compose YAML
+  const composeFiles = files.filter(f => f.name.toLowerCase() === 'docker-compose.yml' || f.name.toLowerCase() === 'docker-compose.yaml');
   for (const docFile of composeFiles) {
-    try {
-      const content = await fs.readFile(path.join(projectPath, docFile.path), 'utf-8');
-      const parsed = YAML.parse(content);
-      if (parsed && parsed.services) {
-        for (const [sName, sConf] of Object.entries(parsed.services)) {
-          if (sConf.image) {
-            const parts = sConf.image.split(':');
-            dependencies.push({
-              name: `docker-image:${parts[0]}`,
-              version: parts[1] || 'latest',
-              type: 'docker'
-            });
+    const composeContent = await getFileContent(docFile.path);
+    if (composeContent) {
+      try {
+        const parsed = YAML.parse(composeContent);
+        if (parsed && parsed.services) {
+          for (const [sName, sConf] of Object.entries(parsed.services)) {
+            if (sConf.image) {
+              const parts = sConf.image.split(':');
+              dependencies.push({
+                name: `docker-image:${parts[0]}`,
+                version: parts[1] || 'latest',
+                type: 'docker'
+              });
+            }
           }
         }
+      } catch (e) {
+        console.warn(`Error parsing Docker Compose ${docFile.path}:`, e);
       }
-    } catch (e) {
-      console.warn(`Error extracting Docker services from ${docFile.path}:`, e);
     }
   }
 

@@ -1,10 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-const DEFAULT_IGNORE = [
+// Only ignore heavy binary/package install directories from traversal, NEVER ignore lockfiles or config files!
+const DEFAULT_IGNORE_DIRS = new Set([
   'node_modules',
   '.git',
-  '.github',
   'dist',
   'build',
   'out',
@@ -12,75 +12,101 @@ const DEFAULT_IGNORE = [
   'obj',
   '.venv',
   'venv',
-  'env',
   '__pycache__',
   'target',
   '.gradle',
   '.idea',
-  '.vscode',
-  'package-lock.json',
-  'yarn.lock',
-  'pnpm-lock.yaml'
-];
+  '.vscode'
+]);
 
 /**
- * Scans a folder recursively and returns file names, sizes and paths.
- * @param {string} dirPath The directory path to scan
- * @param {string} [rootPath] The project base folder path for relative names
- * @param {Array<string>} [ignoreList] Excluded folder/file names
- * @returns {Promise<Array<{name: string, path: string, isDirectory: boolean, size: number}>>}
+ * Optimized & Accurate Repository Scanner.
+ * Performs parallel async directory traversal and populates file contents for key config files.
+ * 
+ * @param {string} dirPath Absolute target directory path
+ * @param {string} [rootPath] Project root path
+ * @returns {Promise<Array<{name: string, path: string, isDirectory: boolean, size: number, content?: string}>>}
  */
-export async function scanRepository(dirPath, rootPath = dirPath, ignoreList = DEFAULT_IGNORE) {
+export async function scanRepository(dirPath, rootPath = dirPath) {
   let results = [];
   try {
-    // If fast GitHub fetch created a virtual file-index.json, use it directly
+    // 1. If fast GitHub fetch created a virtual file-index.json, use it directly
     const indexPath = path.join(dirPath, 'file-index.json');
     try {
       const indexContent = await fs.readFile(indexPath, 'utf-8');
       const virtualFiles = JSON.parse(indexContent);
       if (Array.isArray(virtualFiles) && virtualFiles.length > 0) {
-        return virtualFiles.filter(f => !ignoreList.includes(f.name));
+        return virtualFiles.filter(f => !DEFAULT_IGNORE_DIRS.has(f.name));
       }
     } catch (e) {
-      // index file does not exist, fallback to fs.readdir
+      // index file does not exist, fallback to fast fs scanning
     }
 
+    // 2. Parallel directory reading
     const list = await fs.readdir(dirPath, { withFileTypes: true });
-    for (const entry of list) {
-      if (ignoreList.includes(entry.name)) {
-        continue;
-      }
 
-      const fullPath = path.join(dirPath, entry.name);
-      const relativePath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
-
-      if (entry.isDirectory()) {
-        results.push({
-          name: entry.name,
-          path: relativePath,
-          isDirectory: true,
-          size: 0
-        });
-        const subResults = await scanRepository(fullPath, rootPath, ignoreList);
-        results = results.concat(subResults);
-      } else {
-        let size = 0;
-        try {
-          const stats = await fs.stat(fullPath);
-          size = stats.size;
-        } catch (e) {
-          // ignore stat reading failures
+    const entries = await Promise.all(
+      list.map(async (entry) => {
+        if (DEFAULT_IGNORE_DIRS.has(entry.name)) {
+          return [];
         }
-        results.push({
-          name: entry.name,
-          path: relativePath,
-          isDirectory: false,
-          size
-        });
-      }
-    }
+
+        const fullPath = path.join(dirPath, entry.name);
+        const relativePath = path.relative(rootPath, fullPath).replace(/\\/g, '/');
+
+        if (entry.isDirectory()) {
+          const dirResult = {
+            name: entry.name,
+            path: relativePath,
+            isDirectory: true,
+            size: 0
+          };
+          const subResults = await scanRepository(fullPath, rootPath);
+          return [dirResult, ...subResults];
+        } else {
+          let size = 0;
+          let content = null;
+          try {
+            const stats = await fs.stat(fullPath);
+            size = stats.size;
+
+            // Pre-read content for configuration & manifest files (under 100KB) for maximum accuracy
+            const lowerName = entry.name.toLowerCase();
+            const isConfigFile = (
+              lowerName === 'package.json' ||
+              lowerName === 'requirements.txt' ||
+              lowerName === 'pyproject.toml' ||
+              lowerName === 'go.mod' ||
+              lowerName === 'cargo.toml' ||
+              lowerName === 'docker-compose.yml' ||
+              lowerName === 'docker-compose.yaml' ||
+              lowerName === 'dockerfile' ||
+              lowerName === '.gitignore' ||
+              lowerName.startsWith('.env')
+            );
+
+            if (isConfigFile && size < 100000) {
+              content = await fs.readFile(fullPath, 'utf-8');
+            }
+          } catch (e) {
+            // Ignore stat/read errors
+          }
+
+          return [{
+            name: entry.name,
+            path: relativePath,
+            isDirectory: false,
+            size,
+            ...(content ? { content } : {})
+          }];
+        }
+      })
+    );
+
+    results = entries.flat();
   } catch (err) {
     console.error(`Error scanning path ${dirPath}:`, err);
   }
+
   return results;
 }

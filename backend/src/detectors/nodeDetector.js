@@ -9,17 +9,27 @@ import path from 'path';
  */
 export async function detectNode(projectPath, files) {
   const stack = [];
-  const filePaths = new Set(files.map(f => f.path));
+  
+  // Find package.json in root or subfolder (prefer root package.json if present)
+  let packageFile = files.find(f => f.path === 'package.json') || files.find(f => f.name === 'package.json' && !f.isDirectory);
 
-  if (filePaths.has('package.json')) {
-    stack.push({ name: 'JavaScript', category: 'Language', confidence: 1.0, version: null });
+  if (packageFile) {
+    const relativeSubDir = path.dirname(packageFile.path) === '.' ? '' : path.dirname(packageFile.path).replace(/\\/g, '/');
     
-    if (filePaths.has('tsconfig.json') || files.some(f => f.path.endsWith('.ts') || f.path.endsWith('.tsx'))) {
+    stack.push({ 
+      name: 'JavaScript', 
+      category: 'Language', 
+      confidence: 1.0, 
+      version: relativeSubDir ? `subfolder:${relativeSubDir}` : null 
+    });
+    
+    if (files.some(f => f.name === 'tsconfig.json') || files.some(f => f.path.endsWith('.ts') || f.path.endsWith('.tsx'))) {
       stack.push({ name: 'TypeScript', category: 'Language', confidence: 1.0, version: null });
     }
 
     try {
-      const packageJsonContent = await fs.readFile(path.join(projectPath, 'package.json'), 'utf-8');
+      const packageJsonPath = path.join(projectPath, packageFile.path);
+      const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
       const pkg = JSON.parse(packageJsonContent);
       const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
 

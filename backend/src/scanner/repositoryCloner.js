@@ -37,9 +37,12 @@ async function fastGitHubFetch(owner, repo, targetDir) {
       if (repoRes.ok) {
         const repoMeta = await repoRes.json();
         if (repoMeta.default_branch) activeBranch = repoMeta.default_branch;
+      } else {
+        // If 404 or rate limited, fallback to git clone directly
+        return false;
       }
     } catch (e) {
-      // fallback
+      return false;
     }
 
     let treeFiles = [];
@@ -64,25 +67,24 @@ async function fastGitHubFetch(owner, repo, targetDir) {
     }));
     await fs.writeFile(path.join(targetDir, 'file-index.json'), JSON.stringify(virtualFiles), 'utf-8');
 
-    // Filter relevant configuration files to download
+    // Filter ALL manifest/config files for Node, Python, Java, Go, Rust, and DevOps
     const targetConfigFiles = treeFiles.filter(item => {
       if (item.type !== 'blob') return false;
       const filename = path.basename(item.path).toLowerCase();
-      const ext = path.extname(filename);
       return (
         filename === 'package.json' ||
         filename === 'pom.xml' ||
         filename === 'build.gradle' ||
         filename === 'requirements.txt' ||
+        filename === 'pipfile' ||
         filename === 'pyproject.toml' ||
         filename === 'docker-compose.yml' ||
         filename === 'docker-compose.yaml' ||
         filename === 'dockerfile' ||
         filename === 'go.mod' ||
         filename === 'cargo.toml' ||
-        filename === 'manifest.json' ||
-        filename.startsWith('.env') ||
-        ext === '.js' || ext === '.jsx' || ext === '.ts' || ext === '.tsx' || ext === '.py' || ext === '.java' || ext === '.go' || ext === '.rs'
+        filename === 'cargo.lock' ||
+        filename.startsWith('.env')
       );
     });
 
@@ -147,10 +149,10 @@ export async function cloneRepository(gitUrl, tempDir = './temp') {
     }
   }
 
-  // 3. Fallback to standard git clone (for non-GitHub URLs or private repos)
-  console.log(`🐢 Falling back to git clone for ${gitUrl}...`);
+  // 3. Fallback to shallow git clone (--depth 1) for speed
+  console.log(`⚡ Falling back to shallow git clone for ${gitUrl}...`);
   const git = simpleGit();
   await fs.mkdir(tempDir, { recursive: true });
-  await git.clone(gitUrl, clonePath);
+  await git.clone(gitUrl, clonePath, ['--depth', '1', '--single-branch']);
   return clonePath;
 }

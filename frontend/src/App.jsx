@@ -7,6 +7,7 @@ import DiagnosticsPanel from './components/DiagnosticsPanel';
 import CloneSetupPanel from './components/CloneSetupPanel';
 import AiFixModal from './components/AiFixModal';
 import CliBanner from './components/CliBanner';
+import ChatbotWidget from './components/ChatbotWidget';
 
 export default function App() {
   const [projectsList, setProjectsList] = useState([]);
@@ -38,13 +39,21 @@ export default function App() {
   const fetchProjects = async () => {
     try {
       const res = await fetch('http://localhost:5000/api/scan');
-      const data = await res.json();
-      setProjectsList(data);
-      if (data.length > 0 && !project) {
-        selectProject(data[0].id);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setProjectsList(data);
+          
+          const savedProjectId = localStorage.getItem('stackdoctor_last_project_id');
+          let targetProject = data.find(p => p.id === savedProjectId) || data[0];
+          
+          if (targetProject) {
+            selectProject(targetProject.id);
+          }
+        }
       }
     } catch (e) {
-      console.warn('Backend server not reachable.');
+      console.warn('Backend server not reachable.', e);
     }
   };
 
@@ -62,6 +71,7 @@ export default function App() {
 
   const selectProject = async (id) => {
     try {
+      localStorage.setItem('stackdoctor_last_project_id', id);
       const res = await fetch(`http://localhost:5000/api/scan/${id}`);
       const details = await res.json();
       applyProjectDetails(details);
@@ -118,132 +128,173 @@ export default function App() {
     if (!project) return { diagnostics: [], score: 100 };
 
     const computed = [];
-    const stackNames = new Set(project.stacks?.map(s => s.name.toLowerCase()) || []);
-    
-    // 1. Git (Check globally)
-    const gitVer = mockEnv.tools?.git || '2.0.0';
-    const gitMajor = parseInt(gitVer.split('.')[0], 10);
-    const gitMinor = parseInt(gitVer.split('.')[1], 10);
-    if (gitMajor < 2 || (gitMajor === 2 && gitMinor < 30)) {
-      computed.push({
-        title: 'Git Client Outdated',
-        description: `Project operations require Git >=2.30. Your computer has Git v${gitVer} installed.`,
-        severity: 'warning',
-        file: null
-      });
-    }
-
-    // 2. Node.js Version (Needs >= 22)
-    if (stackNames.has('javascript') || stackNames.has('typescript')) {
-      const nodeVer = mockEnv.tools?.node || '20.0.0';
-      const major = parseInt(nodeVer.split('.')[0], 10);
-      if (major < 22) {
-        computed.push({
-          title: 'Node.js Version Mismatch',
-          description: `Project requires Node.js >=22. Your computer has version ${nodeVer} installed.`,
-          severity: 'error',
-          file: 'package.json'
-        });
-      }
-    }
-
-    // 3. Java Version (Needs 21)
-    if (stackNames.has('java') || stackNames.has('spring boot')) {
-      const javaVer = parseInt(mockEnv.tools?.java || '17', 10);
-      if (javaVer < 21) {
-        computed.push({
-          title: 'Java JDK Version Mismatch',
-          description: `Project requires JDK 21. Your computer has JDK ${javaVer} installed.`,
-          severity: 'error',
-          file: 'pom.xml'
-        });
-      }
-    }
-
-    // 4. Go Version (Needs 1.20)
-    if (stackNames.has('go') || stackNames.has('go lang')) {
-      const goVer = mockEnv.tools?.go || '1.16.0';
-      const minor = parseInt(goVer.split('.')[1], 10);
-      if (minor < 20) {
-        computed.push({
-          title: 'Go Language Version Mismatch',
-          description: `Project requires Go Language >=1.20. Your computer has Go v${goVer} installed.`,
-          severity: 'error',
-          file: 'go.mod'
-        });
-      }
-    }
-
-    // 5. Rust Version (Needs 1.75)
-    if (stackNames.has('rust')) {
-      const rustVer = mockEnv.tools?.rust || '1.60.0';
-      const minor = parseInt(rustVer.split('.')[1], 10);
-      if (minor < 75) {
-        computed.push({
-          title: 'Rust Toolchain Mismatch',
-          description: `Project requires Rust compiler >=1.75. Your computer has Rust v${rustVer} installed.`,
-          severity: 'error',
-          file: 'Cargo.toml'
-        });
-      }
-    }
-
-    // 6. Docker Daemon state
-    if (stackNames.has('docker') || stackNames.has('docker compose')) {
-      if (!mockEnv.dockerRunning) {
-        computed.push({
-          title: 'Docker Daemon Offline',
-          description: 'Docker requirements are configured, but the Docker Desktop daemon is not running on your computer.',
-          severity: 'error',
-          file: 'docker-compose.yml'
-        });
-      }
-    }
-
-    // 7. Check occupied Ports ONLY if the project requires/exposes that port
-    const projectPorts = new Set(project.dependencies?.filter(d => d.type === 'docker').map(d => 5432) || []);
-    // Also add ports detected from project files or default 5000/3000 if node/express
-    if (stackNames.has('express') || stackNames.has('react')) projectPorts.add(5000);
-    if (stackNames.has('docker compose') || stackNames.has('postgresql')) projectPorts.add(5432);
-
-    if (mockEnv.occupiedPorts && mockEnv.occupiedPorts.length > 0) {
-      for (const port of mockEnv.occupiedPorts) {
-        // Only warn if the scanned project actually uses this port
-        if (projectPorts.has(port)) {
+    try {
+      const stackNames = new Set(project.stacks?.map(s => s.name?.toLowerCase()).filter(Boolean) || []);
+      
+      // 1. Git (Check globally)
+      const gitVer = mockEnv?.tools?.git || '2.0.0';
+      if (typeof gitVer === 'string' && gitVer.includes('.')) {
+        const parts = gitVer.split('.');
+        const gitMajor = parseInt(parts[0], 10) || 0;
+        const gitMinor = parseInt(parts[1], 10) || 0;
+        if (gitMajor < 2 || (gitMajor === 2 && gitMinor < 30)) {
           computed.push({
-            title: `Port Conflict Detected (Port ${port})`,
-            description: `Project port ${port} is currently occupied by another process on your computer.`,
+            title: 'Git Client Outdated',
+            description: `Project operations require Git >=2.30. Your computer has Git v${gitVer} installed.`,
             severity: 'warning',
             file: null
           });
         }
       }
-    }
 
-    // 8. Missing Environment Variables Checklist
-    const requiredEnvs = ['DATABASE_URL'];
-    requiredEnvs.forEach(envKey => {
-      const hasSecretsWarning = project.diagnostics?.some(d => d.title.includes('Secrets') || d.title.includes('Environment'));
-      if (hasSecretsWarning && envKey === 'DATABASE_URL') {
-        computed.push({
-          title: `Missing Environment Key: ${envKey}`,
-          description: `The required variable ${envKey} is missing or has not been configured in your local environment.`,
-          severity: 'warning',
-          file: '.env'
+      // 2. Node.js Version (Needs >= 22)
+      if (stackNames.has('javascript') || stackNames.has('typescript')) {
+        const nodeVer = mockEnv?.tools?.node || '20.0.0';
+        if (typeof nodeVer === 'string' && nodeVer.includes('.')) {
+          const major = parseInt(nodeVer.split('.')[0], 10) || 0;
+          if (major < 22) {
+            computed.push({
+              title: 'Node.js Version Mismatch',
+              description: `Project requires Node.js >=22. Your computer has version ${nodeVer} installed.`,
+              severity: 'error',
+              file: 'package.json'
+            });
+          }
+        }
+      }
+
+      // 3. Java Version (Needs 21)
+      if (stackNames.has('java') || stackNames.has('spring boot')) {
+        const javaVer = mockEnv?.tools?.java ? parseInt(String(mockEnv.tools.java), 10) : 17;
+        if (javaVer < 21) {
+          computed.push({
+            title: 'Java JDK Version Mismatch',
+            description: `Project requires JDK 21. Your computer has JDK ${javaVer} installed.`,
+            severity: 'error',
+            file: 'pom.xml'
+          });
+        }
+      }
+
+      // 4. Go Version (Needs 1.20)
+      if (stackNames.has('go') || stackNames.has('go lang')) {
+        const goVer = mockEnv?.tools?.go || null;
+        if (goVer && typeof goVer === 'string' && goVer.includes('.')) {
+          const parts = goVer.split('.');
+          const minor = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
+          if (minor < 20) {
+            computed.push({
+              title: 'Go Language Version Mismatch',
+              description: `Project requires Go Language >=1.20. Your computer has Go v${goVer} installed.`,
+              severity: 'error',
+              file: 'go.mod'
+            });
+          }
+        } else {
+          computed.push({
+            title: 'Go Runtime Missing',
+            description: 'Go language is detected in project manifest but Go runtime is not installed on your PC.',
+            severity: 'error',
+            file: 'go.mod'
+          });
+        }
+      }
+
+      // 5. Rust Version (Needs 1.75)
+      if (stackNames.has('rust')) {
+        const rustVer = mockEnv?.tools?.rust || null;
+        if (rustVer && typeof rustVer === 'string' && rustVer.includes('.')) {
+          const parts = rustVer.split('.');
+          const minor = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
+          if (minor < 75) {
+            computed.push({
+              title: 'Rust Toolchain Mismatch',
+              description: `Project requires Rust compiler >=1.75. Your computer has Rust v${rustVer} installed.`,
+              severity: 'error',
+              file: 'Cargo.toml'
+            });
+          }
+        } else {
+          computed.push({
+            title: 'Rust Toolchain Missing',
+            description: 'Rust compiler (rustc & cargo) is required for this project but is missing on your PC.',
+            severity: 'error',
+            file: 'Cargo.toml'
+          });
+        }
+      }
+
+      // 6. Docker Daemon state
+      if (stackNames.has('docker') || stackNames.has('docker compose')) {
+        if (!mockEnv?.dockerRunning) {
+          computed.push({
+            title: 'Docker Daemon Offline',
+            description: 'Docker requirements are configured, but the Docker Desktop daemon is not running on your computer.',
+            severity: 'error',
+            file: 'docker-compose.yml'
+          });
+        }
+      }
+
+      // 7. Check occupied Ports ONLY if the project requires/exposes that port
+      const projectPorts = new Set(project.dependencies?.filter(d => d.type === 'docker').map(d => 5432) || []);
+      if (stackNames.has('express') || stackNames.has('react')) projectPorts.add(5000);
+      if (stackNames.has('docker compose') || stackNames.has('postgresql')) projectPorts.add(5432);
+
+      if (mockEnv?.occupiedPorts && Array.isArray(mockEnv.occupiedPorts)) {
+        for (const port of mockEnv.occupiedPorts) {
+          if (projectPorts.has(port)) {
+            computed.push({
+              title: `Port Conflict Detected (Port ${port})`,
+              description: `Project port ${port} is currently occupied by another process on your computer.`,
+              severity: 'warning',
+              file: null
+            });
+          }
+        }
+      }
+
+      // 8. Missing Environment Variables Checklist
+      if (project.envs && Array.isArray(project.envs)) {
+        const projectKeys = [];
+        project.envs.forEach(envObj => {
+          if (envObj?.keys && Array.isArray(envObj.keys)) {
+            envObj.keys.forEach(k => {
+              if (k && !projectKeys.includes(k)) projectKeys.push(k);
+            });
+          }
+        });
+
+        if (projectKeys.length > 0) {
+          projectKeys.forEach(envKey => {
+            const hasSecretsWarning = project.diagnostics?.some(d => d?.title?.includes('Secrets') || d?.title?.includes('Environment'));
+            if (hasSecretsWarning) {
+              computed.push({
+                title: `Environment Key Present: ${envKey}`,
+                description: `Key "${envKey}" detected in project env template. Ensure key is configured in your local environment.`,
+                severity: 'warning',
+                file: '.env'
+              });
+            }
+          });
+        }
+      }
+
+      // Append static diagnostics from backend scanner database
+      if (project.diagnostics && Array.isArray(project.diagnostics)) {
+        project.diagnostics.forEach(d => {
+          if (d && d.title) {
+            computed.push({
+              title: d.title,
+              description: d.description || '',
+              severity: d.severity || 'info',
+              file: d.file || null
+            });
+          }
         });
       }
-    });
-
-    // Append static diagnostics from backend scanner database
-    if (project.diagnostics && project.diagnostics.length > 0) {
-      project.diagnostics.forEach(d => {
-        computed.push({
-          title: d.title,
-          description: d.description,
-          severity: d.severity,
-          file: d.file
-        });
-      });
+    } catch (err) {
+      console.error('Error computing diagnostics:', err);
     }
 
     // Deduplicate diagnostics by title
@@ -258,7 +309,8 @@ export default function App() {
     let score = 100;
     uniqueDiagnostics.forEach(d => {
       if (d.severity === 'error') score -= 15;
-      else if (d.severity === 'warning') score -= 10;
+      else if (d.severity === 'warning') score -= 7;
+      else if (d.severity === 'info') score -= 2;
     });
 
     return {
@@ -362,9 +414,8 @@ export default function App() {
               <CliBanner projectId={project.id} />
 
               {/* Dashboard Split Widgets */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '2rem' }}>
-                <HealthScore score={healthScore} />
-                <MockEnvSelector currentEnv={mockEnv} onChange={setMockEnv} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
+                <HealthScore score={healthScore} diagnostics={activeDiagnostics} />
               </div>
 
               {/* Detail Tabs */}
@@ -472,6 +523,9 @@ export default function App() {
           onClose={() => setActiveDiagnostic(null)}
         />
       )}
+
+      {/* Floating StackDoctor AI Chatbot */}
+      <ChatbotWidget project={project} mockEnv={mockEnv} />
     </div>
   );
 }
