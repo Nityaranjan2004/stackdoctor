@@ -56,10 +56,10 @@ export default function CliBanner({ projectId }) {
           <span style={{ fontSize: '1.5rem', marginTop: '-0.2rem' }}>💡</span>
           <div>
             <h4 style={{ color: '#fff', fontSize: '1rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-              Inspect Your Local Laptop Compatibility
+              Inspect & Sync Local System Compatibility
             </h4>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Run this command in your terminal to inspect installed runtimes on your PC and sync with this report:
+              StackDoctor auto-detects <code>requirements.txt</code>, <code>README.md</code>, and project manifests directly. Run this command to verify local runtime sync:
             </p>
           </div>
         </div>

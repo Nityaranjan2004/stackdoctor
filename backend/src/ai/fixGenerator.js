@@ -110,6 +110,13 @@ Respond STRICTLY with a JSON object matching this schema (do NOT include markdow
     };
   }
 
+  if (title.includes('missing .env') || desc.includes('missing .env')) {
+    return {
+      explanation: `Your project code relies on environment variables (such as API keys, secret tokens, or database connection strings), but no local .env configuration file was detected in your project directory.`,
+      commands: `# PowerShell command to auto-generate a template .env file:\n@"\n# Environment Configuration\nGROQ_API_KEY=your_groq_api_key_here\nPORT=8000\nDATABASE_URL=postgresql://postgres:postgres@localhost:5432/app_db\n"@ | Out-File -Encoding utf8 .env\n\n# Verify created .env file:\nGet-Content .env`
+    };
+  }
+
   if (title.includes('secrets') || title.includes('env') || desc.includes('.env')) {
     return {
       explanation: `Your repository contains local secret files (.env) that are being tracked by Git. Secret credentials should never be committed to source control.`,

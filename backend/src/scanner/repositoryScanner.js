@@ -76,12 +76,14 @@ export async function scanRepository(dirPath, rootPath = dirPath) {
               lowerName === 'package.json' ||
               lowerName === 'requirements.txt' ||
               lowerName === 'pyproject.toml' ||
+              lowerName === 'pipfile' ||
               lowerName === 'go.mod' ||
               lowerName === 'cargo.toml' ||
               lowerName === 'docker-compose.yml' ||
               lowerName === 'docker-compose.yaml' ||
               lowerName === 'dockerfile' ||
               lowerName === '.gitignore' ||
+              lowerName.endsWith('.md') ||
               lowerName.startsWith('.env')
             );
 

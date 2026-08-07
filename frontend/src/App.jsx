@@ -8,6 +8,7 @@ import CloneSetupPanel from './components/CloneSetupPanel';
 import AiFixModal from './components/AiFixModal';
 import CliBanner from './components/CliBanner';
 import ChatbotWidget from './components/ChatbotWidget';
+import PreCloneInspector from './components/PreCloneInspector';
 
 export default function App() {
   const [projectsList, setProjectsList] = useState([]);
@@ -20,21 +21,39 @@ export default function App() {
   const [mockEnv, setMockEnv] = useState({
     os: 'windows',
     tools: {
-      node: '20.19.0',
-      java: '17',
-      go: '1.18.0',
-      rust: '1.72.0',
-      git: '2.25.0',
-      python: '3.12',
-      docker: '27.1'
+      node: null,
+      java: null,
+      go: null,
+      rust: null,
+      git: null,
+      python: null,
+      docker: null
     },
     dockerRunning: false,
-    occupiedPorts: [8080]
+    occupiedPorts: []
   });
 
   useEffect(() => {
+    fetchSystemTools();
     fetchProjects();
   }, []);
+
+  const fetchSystemTools = async () => {
+    try {
+      const res = await fetch('http://localhost:5000/api/scan/system-tools');
+      if (res.ok) {
+        const sysEnv = await res.json();
+        setMockEnv(prev => ({
+          ...prev,
+          os: sysEnv.os || prev.os,
+          tools: sysEnv.tools || prev.tools,
+          dockerRunning: sysEnv.dockerRunning ?? prev.dockerRunning
+        }));
+      }
+    } catch (e) {
+      console.warn('System tools check unreachable', e);
+    }
+  };
 
   const fetchProjects = async () => {
     try {
@@ -405,6 +424,9 @@ export default function App() {
 
         {/* Right Main Content */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          {/* Pre-Clone AI Instant Inspector Section */}
+          <PreCloneInspector />
+
           {/* Scanner Input form */}
           <ScannerForm onScanStart={handleScanStart} isScanning={isScanning} selectedProject={project} />
 

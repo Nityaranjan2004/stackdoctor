@@ -5,6 +5,8 @@ import {
   getProjectDetails,
   rescanProject,
   updateEnvironmentSnapshot,
+  getSystemToolsController,
+  preCloneInspectController,
   generateAiFix,
   openTerminalController,
   openFolderController,
@@ -14,6 +16,8 @@ import { chatController } from '../controllers/chat.controller.js';
 
 const router = express.Router();
 
+router.get('/system-tools', getSystemToolsController);
+router.post('/pre-clone-inspect', preCloneInspectController);
 router.post('/', createProject);
 router.post('/environment', updateEnvironmentSnapshot);
 router.post('/fix', generateAiFix);

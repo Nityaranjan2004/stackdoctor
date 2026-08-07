@@ -75,6 +75,21 @@ export function runSecurityRules(stackNames, files, envs) {
     });
   }
 
+  // SEC-06: Missing .env file when project relies on environment variables or dotenv
+  const hasEnvFile = fileNames.has('.env') || fileNames.has('.env.local') || fileNames.has('.env.development') || fileNames.has('.env.production');
+  const usesEnvVars = hasEnvConfig || Array.from(fileNames).some(f => f.includes('dotenv')) || files.some(f => f.content && (/load_dotenv|process\.env|os\.getenv|os\.environ/i.test(f.content)));
+
+  if (!hasEnvFile && usesEnvVars) {
+    diagnostics.push({
+      id: 'SEC-06',
+      title: 'Missing .env Environment Configuration File',
+      description: 'Your project code or dependencies rely on environment variables (e.g., API keys, database credentials), but no local .env file was detected in the project folder.',
+      severity: 'warning',
+      category: 'Security',
+      file: '.env'
+    });
+  }
+
   return diagnostics;
 }
 

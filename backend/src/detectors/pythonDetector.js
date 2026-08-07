@@ -37,6 +37,15 @@ export async function detectPython(projectPath, files) {
         if (/streamlit/i.test(reqsContent)) {
           stack.push({ name: 'Streamlit', category: 'Frontend Framework', confidence: 1.0, version: null });
         }
+        if (/groq/i.test(reqsContent)) {
+          stack.push({ name: 'Groq AI Vision', category: 'AI SDK', confidence: 1.0, version: null });
+        }
+        if (/uvicorn/i.test(reqsContent)) {
+          stack.push({ name: 'Uvicorn ASGI', category: 'Web Server', confidence: 1.0, version: null });
+        }
+        if (/pydantic/i.test(reqsContent)) {
+          stack.push({ name: 'Pydantic', category: 'Data Validation', confidence: 1.0, version: null });
+        }
         if (/sqlalchemy/i.test(reqsContent)) {
           stack.push({ name: 'SQLAlchemy', category: 'ORM', confidence: 1.0, version: null });
         }
@@ -50,7 +59,7 @@ export async function detectPython(projectPath, files) {
 
     // Detect Python entry file from scanned file list
     const pyFiles = files.filter(f => !f.isDirectory && f.name.endsWith('.py'));
-    const entryFile = pyFiles.find(f => /main|app|dashboard|server|manage/i.test(f.name)) || pyFiles[0];
+    const entryFile = pyFiles.find(f => /^main\.py$/i.test(f.name)) || pyFiles.find(f => /main|app|dashboard|server|manage/i.test(f.name)) || pyFiles[0];
     if (entryFile) {
       stack.push({
         name: 'Python Entry Point',

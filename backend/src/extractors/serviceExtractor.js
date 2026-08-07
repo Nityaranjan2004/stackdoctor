@@ -47,22 +47,25 @@ export async function extractServices(projectPath, files) {
   }
 
   // 2. requirements.txt / pyproject.toml (Python)
-  const reqContent = await getFileContent('requirements.txt');
-  if (reqContent) {
-    try {
-      const lines = reqContent.split(/\r?\n/);
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('-r')) continue;
-        const match = trimmed.match(/^([a-zA-Z0-9_\-\[\]]+)(?:==|>=|<=|!=|>|<|~=|@)\s*(.+)$/);
-        if (match) {
-          dependencies.push({ name: match[1].trim(), version: match[2].trim(), type: 'pip' });
-        } else {
-          dependencies.push({ name: trimmed, version: 'latest', type: 'pip' });
+  const reqFiles = files.filter(f => f.name.toLowerCase() === 'requirements.txt' && !f.isDirectory);
+  for (const reqFile of reqFiles) {
+    const reqContent = await getFileContent(reqFile.path);
+    if (reqContent) {
+      try {
+        const lines = reqContent.split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('-r')) continue;
+          const match = trimmed.match(/^([a-zA-Z0-9_\-\[\]]+)(?:==|>=|<=|!=|>|<|~=|@)\s*(.+)$/);
+          if (match) {
+            dependencies.push({ name: match[1].trim(), version: match[2].trim(), type: 'pip' });
+          } else {
+            dependencies.push({ name: trimmed, version: 'latest', type: 'pip' });
+          }
         }
+      } catch (e) {
+        console.warn(`Error parsing ${reqFile.path}:`, e);
       }
-    } catch (e) {
-      console.warn('Error parsing requirements.txt:', e);
     }
   }
 
