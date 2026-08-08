@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config/api';
 
 export default function CloneSetupPanel({ project, mockEnv }) {
   const [copiedStep, setCopiedStep] = useState(null);
@@ -17,7 +18,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
     setIsOpeningTerminal(true);
     setTerminalMessage(null);
     try {
-      const res = await fetch('http://localhost:5000/api/scan/open-terminal', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/open-terminal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmdToRun, targetFolder })
@@ -38,7 +39,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
 
   const handleOpenFolder = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/scan/open-folder', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/open-folder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderPath: targetFolder })
@@ -59,7 +60,7 @@ export default function CloneSetupPanel({ project, mockEnv }) {
   const handlePickFolder = async () => {
     try {
       setTerminalMessage('⏳ Opening system folder browser...');
-      const res = await fetch('http://localhost:5000/api/scan/pick-folder', { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/api/scan/pick-folder`, { method: 'POST' });
       const data = await res.json();
       if (data.selectedFolder) {
         setTargetFolder(data.selectedFolder);

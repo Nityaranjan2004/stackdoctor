@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config/api';
 
 export default function AiFixModal({ diagnostic, onClose }) {
   const [copied, setCopied] = useState(false);
@@ -13,7 +14,7 @@ export default function AiFixModal({ diagnostic, onClose }) {
   const fetchAiFix = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/scan/fix', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/fix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(diagnostic)

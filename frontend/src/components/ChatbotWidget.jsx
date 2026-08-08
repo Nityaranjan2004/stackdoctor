@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { API_BASE_URL } from '../config/api';
 
 export default function ChatbotWidget({ project, mockEnv }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -27,7 +28,7 @@ export default function ChatbotWidget({ project, mockEnv }) {
     setIsLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/scan/chat', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,7 +53,7 @@ export default function ChatbotWidget({ project, mockEnv }) {
     setTerminalStatus('Opening terminal...');
     try {
       const targetFolder = project?.path || '';
-      const res = await fetch('http://localhost:5000/api/scan/open-terminal', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/open-terminal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd, targetFolder })

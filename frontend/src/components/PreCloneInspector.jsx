@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config/api';
 
 export default function PreCloneInspector({ onSelectProject }) {
   const [repoUrl, setRepoUrl] = useState('https://github.com/ppl8763/leafdieases_detection_bakcend');
@@ -15,7 +16,7 @@ export default function PreCloneInspector({ onSelectProject }) {
     setResult(null);
 
     try {
-      const res = await fetch('http://localhost:5000/api/scan/pre-clone-inspect', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/pre-clone-inspect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repoUrl: repoUrl.trim() })

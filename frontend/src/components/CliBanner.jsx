@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config/api';
 
 export default function CliBanner({ projectId }) {
   const [copied, setCopied] = useState(false);
@@ -19,7 +20,7 @@ export default function CliBanner({ projectId }) {
     setIsLaunching(true);
     setMessage(null);
     try {
-      const res = await fetch('http://localhost:5000/api/scan/open-terminal', {
+      const res = await fetch(`${API_BASE_URL}/api/scan/open-terminal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cliCommand })

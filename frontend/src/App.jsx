@@ -9,6 +9,7 @@ import AiFixModal from './components/AiFixModal';
 import CliBanner from './components/CliBanner';
 import ChatbotWidget from './components/ChatbotWidget';
 import PreCloneInspector from './components/PreCloneInspector';
+import { API_BASE_URL } from './config/api';
 
 export default function App() {
   const [projectsList, setProjectsList] = useState([]);
@@ -40,7 +41,7 @@ export default function App() {
 
   const fetchSystemTools = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/scan/system-tools');
+      const res = await fetch(`${API_BASE_URL}/api/scan/system-tools`);
       if (res.ok) {
         const sysEnv = await res.json();
         setMockEnv(prev => ({
@@ -57,7 +58,7 @@ export default function App() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/scan');
+      const res = await fetch(`${API_BASE_URL}/api/scan`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -91,7 +92,7 @@ export default function App() {
   const selectProject = async (id) => {
     try {
       localStorage.setItem('stackdoctor_last_project_id', id);
-      const res = await fetch(`http://localhost:5000/api/scan/${id}`);
+      const res = await fetch(`${API_BASE_URL}/api/scan/${id}`);
       const details = await res.json();
       applyProjectDetails(details);
     } catch (e) {
@@ -102,7 +103,7 @@ export default function App() {
   const handleScanStart = async ({ name, path }) => {
     setIsScanning(true);
     try {
-      const res = await fetch('http://localhost:5000/api/scan', {
+      const res = await fetch(`${API_BASE_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, path })
@@ -116,7 +117,7 @@ export default function App() {
       pollScanStatus(data.id);
     } catch (err) {
       console.error(err);
-      alert('Error connecting to backend server. Make sure it is running on port 5000.');
+      alert('Error connecting to backend server. Make sure backend is accessible.');
       setIsScanning(false);
     }
   };
@@ -126,7 +127,7 @@ export default function App() {
     const interval = setInterval(async () => {
       attempts++;
       try {
-        const res = await fetch(`http://localhost:5000/api/scan/${id}`);
+        const res = await fetch(`${API_BASE_URL}/api/scan/${id}`);
         const details = await res.json();
         
         if (details.status === 'completed' || details.status === 'failed' || attempts > 20) {
