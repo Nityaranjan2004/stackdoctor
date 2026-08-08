@@ -33,6 +33,10 @@ export default function PreCloneInspector({ onSelectProject }) {
     }
   };
 
+  const [activeFile, setActiveFile] = useState(null);
+
+  const previewFiles = result?.filePreviews ? Object.keys(result.filePreviews) : [];
+
   return (
     <div className="glass-card animate-slideup" style={{ marginBottom: '2rem', border: '1px solid rgba(139, 92, 246, 0.3)', background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.7), rgba(30, 41, 59, 0.6))' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.8rem' }}>
@@ -144,6 +148,50 @@ export default function PreCloneInspector({ onSelectProject }) {
               </span>
             ))}
           </div>
+
+          {/* Interactive File Inspector Section */}
+          {previewFiles.length > 0 && (
+            <div style={{ marginTop: '0.5rem', borderTop: '1px dashed var(--border-glass)', paddingTop: '0.8rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                🔍 Remote File Viewer (View Content Without Cloning):
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+                {previewFiles.map(filePath => {
+                  const isSelected = activeFile === filePath;
+                  return (
+                    <button
+                      key={filePath}
+                      onClick={() => setActiveFile(isSelected ? null : filePath)}
+                      style={{
+                        padding: '0.35rem 0.8rem',
+                        fontSize: '0.78rem',
+                        fontFamily: 'monospace',
+                        fontWeight: 600,
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        background: isSelected ? '#8b5cf6' : 'rgba(255,255,255,0.06)',
+                        color: isSelected ? '#fff' : '#cbd5e1',
+                        border: isSelected ? '1px solid #a78bfa' : '1px solid rgba(255,255,255,0.12)'
+                      }}
+                    >
+                      📄 {filePath} {isSelected ? '▲ Hide' : '▼ View'}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeFile && result.filePreviews[activeFile] && (
+                <div style={{ background: '#090d16', border: '1px solid rgba(139, 92, 246, 0.4)', borderRadius: '6px', padding: '0.8rem 1rem', overflowX: 'auto', maxHeight: '280px' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.4rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.3rem' }}>
+                    Content of {activeFile}:
+                  </div>
+                  <pre style={{ margin: 0, fontFamily: 'Consolas, Monaco, monospace', fontSize: '0.8rem', color: '#e2e8f0', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                    {result.filePreviews[activeFile]}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

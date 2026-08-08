@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import simpleGit from 'simple-git';
 
 /**
@@ -124,7 +125,7 @@ async function fastGitHubFetch(owner, repo, targetDir) {
  * @param {string} [tempDir] Base temp directory
  * @returns {Promise<string>} The absolute path to the prepared repository
  */
-export async function cloneRepository(gitUrl, tempDir = './temp') {
+export async function cloneRepository(gitUrl, tempDir = path.join(os.tmpdir(), 'stackdoctor-temp')) {
   // 1. If local directory path exists, return directly
   try {
     const stat = await fs.stat(gitUrl);

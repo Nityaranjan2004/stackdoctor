@@ -163,16 +163,27 @@ export async function preCloneInspectController(req, res, next) {
     const isJava = fileNames.includes('pom.xml') || fileNames.includes('build.gradle');
 
     let rawManifestContent = '';
-    if (owner && repo && (isPython || isNode || isRust || isGo)) {
-      const manifestFile = treeFiles.find(t => {
+    const filePreviews = {};
+
+    if (owner && repo) {
+      // Find inspectable preview files (README.md, requirements.txt, package.json, etc.)
+      const inspectFiles = treeFiles.filter(t => {
         const name = path.basename(t.path).toLowerCase();
-        return name === 'requirements.txt' || name === 'package.json' || name === 'cargo.toml' || name === 'go.mod';
+        return ['requirements.txt', 'package.json', 'cargo.toml', 'go.mod', 'readme.md', '.env.example'].includes(name);
       });
-      if (manifestFile) {
+
+      for (const fileItem of inspectFiles) {
         try {
-          const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${activeBranch}/${manifestFile.path}`;
+          const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${activeBranch}/${fileItem.path}`;
           const rawRes = await fetch(rawUrl, { headers: { 'User-Agent': 'StackDoctor-App' } });
-          if (rawRes.ok) rawManifestContent = await rawRes.text();
+          if (rawRes.ok) {
+            const content = await rawRes.text();
+            filePreviews[fileItem.path] = content;
+            const name = path.basename(fileItem.path).toLowerCase();
+            if (['requirements.txt', 'package.json', 'cargo.toml', 'go.mod'].includes(name)) {
+              rawManifestContent += '\n' + content;
+            }
+          }
         } catch (e) {}
       }
     }
@@ -224,6 +235,7 @@ export async function preCloneInspectController(req, res, next) {
       totalFiles: treeFiles.length,
       isFastScanned: true,
       manifestsFound: Array.from(new Set(fileNames.filter(f => ['requirements.txt', 'package.json', 'cargo.toml', 'go.mod', 'pom.xml', '.env', '.gitignore', 'readme.md'].includes(f)))),
+      filePreviews,
       entryPoint,
       stacks: stacks.length > 0 ? stacks : ['Web Workspace'],
       runCommand: runCmd,
