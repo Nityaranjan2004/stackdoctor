@@ -8,15 +8,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const allowedOrigins = [
-  'http://localhost:5174',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  process.env.FRONTEND_URL
-].filter(Boolean);
+const configuredFrontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : null;
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. Postman, cURL, server-to-server)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches localhost, netlify.app, or FRONTEND_URL
+    const isLocalhost = origin.startsWith('http://localhost:');
+    const isNetlify = origin.endsWith('.netlify.app');
+    const isConfigured = configuredFrontendUrl && origin === configuredFrontendUrl;
+
+    if (isLocalhost || isNetlify || isConfigured) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('CORS not allowed for this origin: ' + origin));
+  },
   credentials: true
 }));
 app.use(express.json());
