@@ -1,100 +1,54 @@
-# StackDoctor AI — Architectural Specification
+# StackDoctor AI — Architectural Overview
 
-This document details the complete design, data structures, and pipeline flow for the StackDoctor AI project.
+This document provides a comprehensive, high-level design of the StackDoctor AI project. It is intended to be easily explainable to both human developers and AI agents operating within this repository.
 
-## Core Pipeline (5 Words)
-```
-SCAN ──► INSPECT ──► COMPARE ──► DIAGNOSE ──► FIX
-```
+## 1. Technology Stack
 
----
+StackDoctor is built using a modern full-stack JavaScript architecture:
 
-## 1. Phase 1: SCAN (Repository Scanner & Profile)
-* **Goal**: Analyze the GitHub repository or local workspace folder to understand what technology stack and environment settings it requires.
-* **Result**: Generates a **Project Requirements Profile**.
-
-### Output JSON Schema Example
-```json
-{
-  "node": ">=22",
-  "java": "21",
-  "docker": true,
-  "services": [
-    "postgresql",
-    "redis"
-  ],
-  "ports": [
-    8080,
-    5432,
-    6379
-  ],
-  "environmentVariables": [
-    "DATABASE_URL",
-    "DATABASE_PASSWORD",
-    "JWT_SECRET"
-  ]
-}
-```
+*   **Frontend**: Built with **React** and **Vite**. It uses a component-based architecture to provide a real-time dashboard for scanning projects, viewing diagnostics, and interacting with AI fixes.
+*   **Backend**: A REST API built with **Node.js** and **Express**. It handles the heavy lifting of cloning repositories, parsing files, running diagnostics, and communicating with the database and AI models.
+*   **Database**: **MongoDB** is used as the primary data store, accessed via the **Prisma ORM**. MongoDB is hosted on Atlas for production flexibility.
+*   **AI Integration**: Powered by **Google Gemini** (via `@google/genai`), which is used to generate human-readable remediation steps and CLI commands based on structured diagnostic JSON.
 
 ---
 
-## 2. Phase 2: INSPECT (CLI Environment Inspector)
-* **Goal**: Run locally on the developer's PC via `stackdoctor diagnose`.
-* **Result**: Generates an **Environment Snapshot**.
+## 2. Data Model (Prisma / MongoDB)
 
-### Output JSON Schema Example
-```json
-{
-  "os": "windows",
-  "tools": {
-    "node": "20.19.0",
-    "java": "17",
-    "python": "3.13",
-    "git": "2.51",
-    "docker": "29.5"
-  },
-  "dockerRunning": false,
-  "occupiedPorts": [
-    8080
-  ]
-}
-```
+The system relies on four primary models to track the state and health of scanned projects:
+
+1.  **`Project`**: The core entity. It represents a single repository or local folder that has been scanned. It tracks the project's `name`, `path` (or Git URL), and current scan `status` (idle, scanning, completed, failed).
+2.  **`Stack`**: Represents the technologies discovered within a Project (e.g., Node.js, React, Docker). It includes the `name`, detected `version`, `category` (Frontend, Backend, etc.), and a `confidence` score of the detection.
+3.  **`Dependency`**: Represents specific packages or services required by the project (e.g., `express`, `mongoose`, `postgres` via Docker). It tracks the `name`, `version`, and `type` (npm, pip, docker).
+4.  **`Diagnostic`**: Represents an issue found during the comparison phase. It includes a `title`, `description`, `severity` (info, warning, error), and potentially the `file` where the issue was detected.
 
 ---
 
-## 3. Phase 3 & 4: COMPARE & DIAGNOSE (Diagnostic Engine)
-* **Goal**: Perform a direct comparison of the **Project Requirements Profile** against the **Environment Snapshot** using structured javascript rules (no AI).
-* **Result**: Produces a list of typed issues.
+## 3. High-Level Design: The 5-Phase Pipeline
 
-### Diagnostic Rules
-1. **Rule 1**: Required Node vs Installed Node ──► `NODE_VERSION_MISMATCH`
-2. **Rule 2**: Required Java vs Installed Java ──► `JAVA_VERSION_MISMATCH`
-3. **Rule 3**: Docker required but daemon is stopped ──► `DOCKER_NOT_RUNNING`
-4. **Rule 4**: Port required but bound by another local process ──► `PORT_CONFLICT`
+StackDoctor operates on a strict, predictable 5-phase pipeline. 
 
-### Output JSON Schema Example
-```json
-[
-  {
-    "code": "NODE_VERSION_MISMATCH",
-    "severity": "ERROR",
-    "required": ">=22",
-    "actual": "20.19.0"
-  },
-  {
-    "code": "DOCKER_NOT_RUNNING",
-    "severity": "ERROR"
-  },
-  {
-    "code": "PORT_CONFLICT",
-    "severity": "WARNING",
-    "port": 8080
-  }
-]
+```mermaid
+flowchart LR
+    A[SCAN] --> B[INSPECT]
+    B --> C[COMPARE]
+    C --> D[DIAGNOSE]
+    D --> E[FIX]
 ```
 
----
+### Phase 1: SCAN (Repository Scanner & Profile)
+*   **What happens:** The backend receives a repository URL or local path. It recursively scans the files (e.g., `package.json`, `docker-compose.yml`, `pom.xml`) to determine what the project *needs* to run.
+*   **Result:** A JSON **Project Requirements Profile** detailing required languages, services, ports, and environment variables.
 
-## 4. Phase 5: FIX (AI Integration)
-* **Goal**: Query the LLM (Gemini) with the structured JSON diagnostics to generate step-by-step human explanations and terminal command suggestions.
-* **Remediation Commands**: Sent back to the frontend report, and optionally executed securely via CLI upon developer confirmation.
+### Phase 2: INSPECT (CLI Environment Inspector)
+*   **What happens:** The system inspects the developer's *actual local machine*. It checks what is currently installed and running (e.g., "Is Docker running?", "What version of Node is installed?", "Is port 5432 open?").
+*   **Result:** A JSON **Environment Snapshot**.
+
+### Phase 3 & 4: COMPARE & DIAGNOSE (Diagnostic Engine)
+*   **What happens:** The engine performs a deterministic, rule-based comparison (no AI involved yet) between what the project *requires* (Phase 1) and what the environment *has* (Phase 2).
+*   **Rules Example:** If Project requires Node >=22, but Environment has Node 20.19.0, it throws a `NODE_VERSION_MISMATCH` error.
+*   **Result:** A structured JSON list of `Diagnostic` objects saved to the database.
+
+### Phase 5: FIX (AI Integration)
+*   **What happens:** The structured JSON diagnostics are sent to the Gemini AI model. Gemini acts as an expert consultant, translating the raw JSON errors into step-by-step, human-readable explanations.
+*   **Result:** The AI generates actionable Remediation Commands that are sent back to the frontend dashboard, allowing the developer to easily fix their environment.
